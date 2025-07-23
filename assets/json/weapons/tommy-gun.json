@@ -1,7 +1,7 @@
 {
-  "id": "tommy_gun",
+  "id": "tommy-gun",
   "name": "Tommy Gun",
-  "image": "/assets/weapons/tommy_gun.png",
+  "image": "/assets/weapons/tommy-gun.png",
   "baseStats": {
     "attack": 15,
     "defense": 0
