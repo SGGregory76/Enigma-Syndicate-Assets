@@ -1,131 +1,28 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Enigma Syndicate Game Demo</title>
-  <style>
-    body { margin:0; padding:20px; font-family:sans-serif; }
-    #game-root { width:100%; max-width:400px; margin:20px auto; }
-    #demo-errors { color:red; white-space: pre-wrap; margin-top:10px; }
-    .faction-badge { width: 40px; display:block; margin:0 auto; }
-    .card-image  { width:100%; display:block; margin:10px auto; }
-    .stats-panel { font-family: monospace; margin: 10px 0; text-align:center; }
-    .weapons-panel img { width: 30px; margin: 0 5px; vertical-align:middle; }
-  </style>
+  <meta charset="UTF-8"/>
+  <title>Enigma Syndicate Demo</title>
+  <!-- Load the compat bundle so `firebase` is a global -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase.js"></script>
+  <script>
+    // Initialize your project
+    firebase.initializeApp({
+      apiKey: "AIzaSyCiFF0giW60YhEF9MPF8RMMETXkNW9vv2Y",
+      authDomain: "sandbox-mafia.firebaseapp.com",
+      databaseURL: "https://sandbox-mafia-default-rtdb.firebaseio.com",
+      projectId: "sandbox-mafia",
+      storageBucket: "sandbox-mafia.firebasestorage.app",
+      messagingSenderId: "966783573980",
+      appId: "1:966783573980:web:a07a7b66d7d9a057dab919"
+    });
+    // Now `firebase` is ready for auth() and database() calls
+  </script>
+  <!-- then your engine IIFE comes after this -->
 </head>
 <body>
-  <div id="game-root"></div>
-  <pre id="demo-errors">Loading engine…</pre>
-
-  <!-- Firebase SDKs -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js"></script>
-
-  <script>
-    (function(window){
-      try {
-        const cfg = {
-          apiKey: "AIzaSyCiFF0giW60YhEF9MPF8RMMETXkNW9vv2Y",
-          authDomain: "sandbox-mafia.firebaseapp.com",
-          databaseURL: "https://sandbox-mafia-default-rtdb.firebaseio.com",
-          projectId: "sandbox-mafia",
-          storageBucket: "sandbox-mafia.firebasestorage.app",
-          messagingSenderId: "966783573980",
-          appId: "1:966783573980:web:a07a7b66d7d9a057dab919"
-        };
-        firebase.initializeApp(cfg);
-        const auth = firebase.auth(), db = firebase.database();
-        let uid = null;
-        const xpToLevel = xp => Math.floor(xp/100)+1;
-
-        function initAuth() {
-          return new Promise((res, rej) => {
-            auth.onAuthStateChanged(u => {
-              if (u) { uid = u.uid; res(u); }
-              else auth.signInAnonymously()
-                .then(c => { uid = c.user.uid; res(c.user); })
-                .catch(rej);
-            });
-          });
-        }
-
-        async function fetchJSON(path){
-          const r = await fetch(path);
-          if (!r.ok) throw new Error(`Fetch ${path} failed ${r.status}`);
-          return r.json();
-        }
-        function fetchPlayer() {
-          return db.ref(`/players/${uid}`).once('value').then(s=>s.val());
-        }
-        function fetchFaction(f) {
-          return db.ref(`/factions/${f}`).once('value').then(s=>s.val());
-        }
-        function fetchWeapon(id) {
-          return fetchJSON(
-            `${window.ASSETS_BASE_URL}/assets/json/weapons/${id}.json`
-          );
-        }
-
-        async function renderCard(id){
-          const data = await fetchPlayer();
-          const lvl  = xpToLevel(data.stats.experience);
-          const wdefs= await Promise.all(data.weapons.map(fetchWeapon));
-          const fac  = await fetchFaction(data.faction);
-          let atk=0, def=0;
-          wdefs.forEach(w => {
-            atk += w.baseStats.attack + lvl*w.scaling.attackPerLevel;
-            def += w.baseStats.defense + lvl*w.scaling.defensePerLevel;
-          });
-          atk += fac.bonuses.attack; def += fac.bonuses.defense;
-
-          const c = document.getElementById(id);
-          c.innerHTML = '';
-          const badge = Object.assign(document.createElement('img'), {
-            src:`${window.ASSETS_BASE_URL}/assets/factions/${data.faction}.png`,
-            className:'faction-badge'
-          });
-          const card  = Object.assign(document.createElement('img'), {
-            src:`${window.ASSETS_BASE_URL}/assets/cards/${data.cardId}.png`,
-            className:'card-image'
-          });
-          const stats = document.createElement('div');
-          stats.className = 'stats-panel';
-          stats.innerHTML = `
-            <p>Level: ${lvl}</p>
-            <p>HP: ${data.stats.health}</p>
-            <p>EN: ${data.stats.energy}</p>
-            <p>XP: ${data.stats.experience}</p>
-            <p>ATK: ${atk}</p>
-            <p>DEF: ${def}</p>
-          `;
-          const wp = document.createElement('div');
-          wp.className = 'weapons-panel';
-          wdefs.forEach(w => {
-            const img = document.createElement('img');
-            img.src   = `${window.ASSETS_BASE_URL}/assets/weapons/${w.id}.png`;
-            img.title = `${w.name} ATK:${w.baseStats.attack+lvl*w.scaling.attackPerLevel}, DEF:${w.baseStats.defense+lvl*w.scaling.defensePerLevel}`;
-            wp.append(img);
-          });
-
-          c.append(badge, card, stats, wp);
-          document.getElementById('demo-errors').textContent = '';
-        }
-
-        window.initGame = async function(id){
-          await initAuth();
-          await renderCard(id);
-        };
-
-        // After everything loads, kick off the game:
-        window.addEventListener('load', () => initGame('game-root'));
-      }
-      catch(err) {
-        document.getElementById('demo-errors').textContent =
-          'Engine error: ' + err.message;
-      }
-    })(window);
-  </script>
+  <!-- … -->
 </body>
 </html>
+
 
