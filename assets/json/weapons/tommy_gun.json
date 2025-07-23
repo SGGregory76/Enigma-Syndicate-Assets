@@ -1,0 +1,13 @@
+{
+  "id": "tommy-gun",
+  "name": "Tommy Gun",
+  "image": "/assets/weapons/tommy-gun.png",
+  "baseStats": {
+    "attack": 15,
+    "defense": 0
+  },
+  "scaling": {
+    "attackPerLevel": 2,
+    "defensePerLevel": 0
+  }
+}
