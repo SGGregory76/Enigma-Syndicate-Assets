@@ -4,11 +4,11 @@
   <meta charset="UTF-8"/>
   <title>Enigma Syndicate Game Demo</title>
   <style>
-    body { margin:0; padding:20px; font-family:sans-serif; }
-    #game-root { width:100%; max-width:400px; margin:20px auto; }
+    body { margin:0; padding:20px; font-family:sans-serif; background:#f4f4f4; }
+    #game-root { width:100%; max-width:400px; margin:20px auto; background:#fff; padding:16px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
     #demo-errors { color:red; white-space: pre-wrap; margin-top:10px; text-align:center; }
-    .faction-badge { width: 40px; display:block; margin:0 auto; }
-    .card-image  { width:100%; display:block; margin:10px auto; }
+    .faction-badge { width: 40px; display:block; margin:0 auto 8px; }
+    .card-image  { width:100%; display:block; border-radius:4px; }
     .stats-panel { font-family: monospace; margin: 10px 0; text-align:center; }
     .weapons-panel img { width: 30px; margin: 0 5px; vertical-align:middle; }
   </style>
@@ -18,7 +18,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 
-  <!-- 2) Point to your GitHub Pages assets -->
+  <!-- 2) Assets base URL -->
   <script>
     window.ASSETS_BASE_URL = 'https://SGGregory76.github.io/Enigma-Syndicate-Assets';
   </script>
@@ -27,12 +27,13 @@
   <div id="game-root"></div>
   <pre id="demo-errors">Loading engine…</pre>
 
-  <!-- 3) Inline engine + error handling + auto‐seed player -->
+  <!-- 3) Inline engine with card‐metadata & auto‐seed logic -->
   <script>
   (async function(){
     const errBox = document.getElementById('demo-errors');
+
     try {
-      // —— Initialize Firebase ——
+      // —— Init Firebase ——
       const cfg = {
         apiKey: "AIzaSyCiFF0giW60YhEF9MPF8RMMETXkNW9vv2Y",
         authDomain: "sandbox-mafia.firebaseapp.com",
@@ -47,38 +48,40 @@
       let uid = null;
       const xpToLevel = xp => Math.floor(xp/100) + 1;
 
-      // —— Auth helper ——
+      // —— Auth ——
       function initAuth() {
         return new Promise((res, rej) => {
           auth.onAuthStateChanged(u => {
-            if (u) {
-              uid = u.uid;
-              res(u);
-            } else {
-              auth.signInAnonymously()
-                .then(c => { uid = c.user.uid; res(c.user); })
-                .catch(rej);
-            }
+            if (u) { uid = u.uid; res(u); }
+            else auth.signInAnonymously().then(c => { uid = c.user.uid; res(c.user); }).catch(rej);
           });
         });
       }
 
-      // —— Fetch & auto‐seed helpers ——
-      async function fetchJSON(path) {
-        const r = await fetch(path);
-        if (!r.ok) throw new Error(`Fetch ${path} failed (${r.status})`);
-        return r.json();
+      // —— Load card metadata once ——
+      async function fetchCardMeta() {
+        if (!window._cardMeta) {
+          const resp = await fetch(`${window.ASSETS_BASE_URL}/assets/json/cards.json`);
+          if (!resp.ok) throw new Error(`cards.json load ${resp.status}`);
+          window._cardMeta = await resp.json();
+        }
+        return window._cardMeta;
       }
-      function fetchPlayerRaw() {
-        return db.ref(`/players/${uid}`).once('value').then(s=>s.val());
-      }
+
+      // —— Player fetch with auto‐seed based on card metadata ——
       async function fetchPlayer() {
-        let data = await fetchPlayerRaw();
+        // raw read
+        let data = await db.ref(`/players/${uid}`).once('value').then(s=>s.val());
         if (!data) {
-          // no existing player—write a default record
+          // choose random cardId
+          const meta = await fetchCardMeta();
+          const cards = Object.keys(meta);
+          const cardId = cards[Math.floor(Math.random()*cards.length)];
+          const faction = meta[cardId].faction;
+
           data = {
-            cardId: "vito_the_intimidator",
-            faction: "enforcers",
+            cardId,
+            faction,
             weapons: ["tommy-gun","bulletproof_vest"],
             stats: { health:100, energy:50, experience:0 },
             abilities: { quick_shot:{ attackBonus:5, cooldown:30 } },
@@ -88,6 +91,13 @@
         }
         return data;
       }
+
+      // —— Helpers to fetch JSON & DB nodes ——
+      async function fetchJSON(path) {
+        const r = await fetch(path);
+        if (!r.ok) throw new Error(`Fetch ${path} ${r.status}`);
+        return r.json();
+      }
       function fetchFaction(id) {
         return db.ref(`/factions/${id}`).once('value').then(s=>s.val());
       }
@@ -96,30 +106,39 @@
       }
 
       // —— Render card UI ——
-      async function renderCard(containerId, data) {
+      async function renderCard(id, data) {
         const lvl = xpToLevel(data.stats.experience);
         const wdefs = await Promise.all(data.weapons.map(fetchWeapon));
-        const fac = await fetchFaction(data.faction);
+        let fac;
+        try {
+          fac = await fetchFaction(data.faction);
+          if (!fac || !fac.bonuses) throw new Error();
+        } catch {
+          fac = { bonuses:{ attack:0, defense:0 } };
+        }
 
-        let totalAtk = 0, totalDef = 0;
+        let totalAtk=0, totalDef=0;
         wdefs.forEach(w => {
           totalAtk += w.baseStats.attack + lvl*w.scaling.attackPerLevel;
           totalDef += w.baseStats.defense + lvl*w.scaling.defensePerLevel;
         });
-        totalAtk += (fac.bonuses?.attack||0);
-        totalDef += (fac.bonuses?.defense||0);
+        totalAtk += fac.bonuses.attack;
+        totalDef += fac.bonuses.defense;
 
-        const root = document.getElementById(containerId);
+        const root = document.getElementById(id);
         root.innerHTML = "";
 
+        // faction badge
         const badge = Object.assign(document.createElement('img'), {
-          src: `${window.ASSETS_BASE_URL}/assets/factions/${data.faction}.png`,
-          className: 'faction-badge'
+          src:`${window.ASSETS_BASE_URL}/assets/factions/${data.faction}.png`,
+          className:'faction-badge'
         });
+        // card image
         const cardImg = Object.assign(document.createElement('img'), {
-          src: `${window.ASSETS_BASE_URL}/assets/cards/${data.cardId}.png`,
-          className: 'card-image'
+          src:`${window.ASSETS_BASE_URL}/assets/cards/${data.cardId}.png`,
+          className:'card-image'
         });
+        // stats
         const statsDiv = document.createElement('div');
         statsDiv.className = 'stats-panel';
         statsDiv.innerHTML = `
@@ -130,12 +149,13 @@
           <p>Total ATK: ${totalAtk}</p>
           <p>Total DEF: ${totalDef}</p>
         `;
+        // weapons
         const weaponsDiv = document.createElement('div');
         weaponsDiv.className = 'weapons-panel';
         wdefs.forEach(w => {
           const img = document.createElement('img');
           img.src = `${window.ASSETS_BASE_URL}/assets/weapons/${w.id}.png`;
-          img.title = `${w.name} — ATK:${w.baseStats.attack + lvl*w.scaling.attackPerLevel}, DEF:${w.baseStats.defense + lvl*w.scaling.defensePerLevel}`;
+          img.title = `${w.name} — ATK:${w.baseStats.attack+lvl*w.scaling.attackPerLevel}, DEF:${w.baseStats.defense+lvl*w.scaling.defensePerLevel}`;
           weaponsDiv.append(img);
         });
 
@@ -144,30 +164,23 @@
       }
 
       // —— Expose & run initGame ——
-      window.initGame = async function(containerId) {
-        try {
-          await initAuth();
-          const playerData = await fetchPlayer();
-          await renderCard(containerId, playerData);
-        } catch(e) {
-          errBox.textContent = "Engine render error: " + e.message;
-        }
+      window.initGame = async function(rootId) {
+        await initAuth();
+        const playerData = await fetchPlayer();
+        await renderCard(rootId, playerData);
       };
 
-      // Kick off on load
-      window.addEventListener('load', () => {
-        if (typeof initGame === 'function') initGame('game-root');
-        else errBox.textContent = "initGame not defined after load.";
-      });
+      // run on load
+      await window.initGame('game-root');
     }
-    catch(err) {
-      document.getElementById('demo-errors').textContent =
-        "Engine init error: " + err.message;
+    catch(e) {
+      errBox.textContent = 'Engine error: ' + e.message;
     }
   })();
   </script>
 </body>
 </html>
+
 
 
 
