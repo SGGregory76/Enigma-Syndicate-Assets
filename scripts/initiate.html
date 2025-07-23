@@ -1,0 +1,10 @@
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    if (typeof initGame === 'function') {
+      initGame('game-root');
+    } else {
+      document.getElementById('game-errors').textContent =
+        '❌ initGame is not defined (inline code didn’t run?)';
+    }
+  });
+</script>
