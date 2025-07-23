@@ -6,19 +6,19 @@
   <style>
     body { margin:0; padding:20px; font-family:sans-serif; background:#f4f4f4; }
     #game-root { width:100%; max-width:400px; margin:20px auto; background:#fff; padding:16px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
-    #demo-errors { color:red; white-space: pre-wrap; margin-top:10px; text-align:center; }
     .faction-badge { width: 40px; display:block; margin:0 auto 8px; }
     .card-image  { width:100%; display:block; border-radius:4px; }
     .stats-panel { font-family: monospace; margin: 10px 0; text-align:center; }
     .weapons-panel img { width: 30px; margin: 0 5px; vertical-align:middle; }
+    #demo-errors { color:red; text-align:center; white-space:pre-wrap; margin-top:10px; }
   </style>
 
-  <!-- Firebase compat SDKs -->
+  <!-- 1) Firebase compat SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 
-  <!-- Assets base URL -->
+  <!-- 2) Assets base URL -->
   <script>
     window.ASSETS_BASE_URL = 'https://SGGregory76.github.io/Enigma-Syndicate-Assets';
   </script>
@@ -27,21 +27,22 @@
   <div id="game-root"></div>
   <pre id="demo-errors">Loading engine…</pre>
 
+  <!-- 3) Inline engine + auto-seed + card-metadata -->
   <script>
   (async function(){
     const errBox = document.getElementById('demo-errors');
 
-    // ---- Inline card metadata ----
+    // Inline card metadata
     const cardMeta = {
-      "vito_the_intimidator": { faction: "enforcers",   displayName: "Vito the Intimidator" },
-      "lola_the_quick":       { faction: "undercutters", displayName: "Lola the Quick" },
-      "bruno_the_tank":       { faction: "syndicate",   displayName: "Bruno the Tank" }
-      // add more cardId entries here as you create them
+      "vito_the_intimidator": { faction: "enforcers",    displayName: "Vito the Intimidator" },
+      "lola_the_quick":       { faction: "undercutters",  displayName: "Lola the Quick"   },
+      "bruno_the_tank":       { faction: "syndicate",    displayName: "Bruno the Tank"   }
+      // …add more as needed
     };
 
     try {
-      // ---- Initialize Firebase ----
-      const cfg = {
+      // Initialize Firebase
+      firebase.initializeApp({
         apiKey: "AIzaSyCiFF0giW60YhEF9MPF8RMMETXkNW9vv2Y",
         authDomain: "sandbox-mafia.firebaseapp.com",
         databaseURL: "https://sandbox-mafia-default-rtdb.firebaseio.com",
@@ -49,132 +50,109 @@
         storageBucket: "sandbox-mafia.firebasestorage.app",
         messagingSenderId: "966783573980",
         appId: "1:966783573980:web:a07a7b66d7d9a057dab919"
-      };
-      firebase.initializeApp(cfg);
+      });
       const auth = firebase.auth(), db = firebase.database();
       let uid = null;
+
+      // XP → Level
       const xpToLevel = xp => Math.floor(xp/100) + 1;
 
-      // ---- Auth helper ----
-      function initAuth() {
-        return new Promise((res, rej) => {
-          auth.onAuthStateChanged(u => {
-            if (u) { uid = u.uid; res(u); }
-            else auth.signInAnonymously().then(c => { uid = c.user.uid; res(c.user); }).catch(rej);
-          });
+      // Authenticate anonymously
+      await new Promise((res, rej) => {
+        auth.onAuthStateChanged(u => {
+          if (u) { uid = u.uid; res(); }
+          else auth.signInAnonymously()
+                 .then(c => { uid = c.user.uid; res(); })
+                 .catch(rej);
         });
+      });
+
+      // Fetch or seed player
+      let player = await db.ref(`/players/${uid}`).once('value').then(s => s.val());
+      if (!player) {
+        const cards = Object.keys(cardMeta);
+        const cardId = cards[Math.floor(Math.random() * cards.length)];
+        player = {
+          cardId,
+          faction: cardMeta[cardId].faction,
+          weapons: ["tommy-gun", "bulletproof_vest"],
+          stats: { health:100, energy:50, experience:0 },
+          abilities: { quick_shot:{ attackBonus:5, cooldown:30 } },
+          lastUpdated: new Date().toISOString()
+        };
+        await db.ref(`/players/${uid}`).set(player);
       }
 
-      // ---- Player fetch with auto-seed based on inline metadata ----
-      async function fetchPlayer() {
-        let data = await db.ref(`/players/${uid}`).once('value').then(s=>s.val());
-        if (!data) {
-          // pick a random cardId
-          const cards = Object.keys(cardMeta);
-          const cardId = cards[Math.floor(Math.random()*cards.length)];
-          const faction = cardMeta[cardId].faction;
-
-          data = {
-            cardId,
-            faction,
-            weapons: ["tommy-gun","bulletproof_vest"],
-            stats: { health:100, energy:50, experience:0 },
-            abilities: { quick_shot:{ attackBonus:5, cooldown:30 } },
-            lastUpdated: new Date().toISOString()
-          };
-          await db.ref(`/players/${uid}`).set(data);
-        }
-        return data;
-      }
-
-      // ---- Helpers ----
+      // Helper to fetch JSON
       async function fetchJSON(path) {
         const r = await fetch(path);
-        if (!r.ok) throw new Error(`Fetch ${path} (${r.status})`);
+        if (!r.ok) throw new Error(`Fetch ${path} failed (${r.status})`);
         return r.json();
       }
-      function fetchFaction(id) {
-        return db.ref(`/factions/${id}`).once('value').then(s=>s.val());
-      }
-      function fetchWeapon(id) {
-        return fetchJSON(`${window.ASSETS_BASE_URL}/assets/json/weapons/${id}.json`);
-      }
 
-      // ---- Render card UI ----
-      async function renderCard(id, data) {
-        const lvl = xpToLevel(data.stats.experience);
-        const wdefs = await Promise.all(data.weapons.map(fetchWeapon));
+      // Load weapon definitions
+      const wdefs = await Promise.all(
+        player.weapons.map(id => fetchJSON(`${ASSETS_BASE_URL}/assets/json/weapons/${id}.json`))
+      );
 
-        let fac;
-        try {
-          fac = await fetchFaction(data.faction);
-          if (!fac || !fac.bonuses) throw new Error();
-        } catch {
-          fac = { bonuses:{ attack:0, defense:0 } };
-        }
-
-        let totalAtk=0, totalDef=0;
-        wdefs.forEach(w => {
-          totalAtk += w.baseStats.attack + lvl*w.scaling.attackPerLevel;
-          totalDef += w.baseStats.defense + lvl*w.scaling.defensePerLevel;
-        });
-        totalAtk += fac.bonuses.attack;
-        totalDef += fac.bonuses.defense;
-
-        const root = document.getElementById(id);
-        root.innerHTML = "";
-
-        const badge = Object.assign(document.createElement('img'), {
-          src: `${window.ASSETS_BASE_URL}/assets/factions/${data.faction}.png`,
-          className: 'faction-badge'
-        });
-        const cardImg = Object.assign(document.createElement('img'), {
-          src: `${window.ASSETS_BASE_URL}/assets/cards/${data.cardId}.png`,
-          className: 'card-image'
-        });
-        const statsDiv = document.createElement('div');
-        statsDiv.className = 'stats-panel';
-        statsDiv.innerHTML = `
-          <p>${cardMeta[data.cardId].displayName}</p>
-          <p>Level: ${lvl}</p>
-          <p>Health: ${data.stats.health}</p>
-          <p>Energy: ${data.stats.energy}</p>
-          <p>XP: ${data.stats.experience}</p>
-          <p>Total ATK: ${totalAtk}</p>
-          <p>Total DEF: ${totalDef}</p>
-        `;
-        const weaponsDiv = document.createElement('div');
-        weaponsDiv.className = 'weapons-panel';
-        wdefs.forEach(w => {
-          const img = document.createElement('img');
-          img.src = `${window.ASSETS_BASE_URL}/assets/weapons/${w.id}.png`;
-          img.title = `${w.name} — ATK:${w.baseStats.attack+lvl*w.scaling.attackPerLevel}, DEF:${w.baseStats.defense+lvl*w.scaling.defensePerLevel}`;
-          weaponsDiv.append(img);
-        });
-
-        root.append(badge, cardImg, statsDiv, weaponsDiv);
-        errBox.textContent = "";
+      // Load faction (fallback to zero bonuses)
+      let fac;
+      try {
+        fac = await db.ref(`/factions/${player.faction}`).once('value').then(s => s.val());
+        if (!fac || !fac.bonuses) throw new Error();
+      } catch {
+        fac = { bonuses:{ attack:0, defense:0 } };
       }
 
-      // ---- Expose & run ----
-      window.initGame = async rootId => {
-        await initAuth();
-        const playerData = await fetchPlayer();
-        await renderCard(rootId, playerData);
-      };
+      // Compute total stats
+      const lvl = xpToLevel(player.stats.experience);
+      let totalAtk = 0, totalDef = 0;
+      wdefs.forEach(w => {
+        totalAtk += w.baseStats.attack + lvl * w.scaling.attackPerLevel;
+        totalDef += w.baseStats.defense + lvl * w.scaling.defensePerLevel;
+      });
+      totalAtk += fac.bonuses.attack;
+      totalDef += fac.bonuses.defense;
 
-      await window.initGame('game-root');
+      // Render UI
+      const root = document.getElementById('game-root');
+      root.innerHTML = '';
+
+      const badge = Object.assign(document.createElement('img'), {
+        src: `${ASSETS_BASE_URL}/assets/factions/${player.faction}.png`,
+        className: 'faction-badge'
+      });
+      const cardImg = Object.assign(document.createElement('img'), {
+        src: `${ASSETS_BASE_URL}/assets/cards/${player.cardId}.png`,
+        className: 'card-image'
+      });
+      const stats = document.createElement('div');
+      stats.className = 'stats-panel';
+      stats.innerHTML = `
+        <p>${cardMeta[player.cardId].displayName}</p>
+        <p>Level: ${lvl}</p>
+        <p>Health: ${player.stats.health}</p>
+        <p>Energy: ${player.stats.energy}</p>
+        <p>XP: ${player.stats.experience}</p>
+        <p>Total ATK: ${totalAtk}</p>
+        <p>Total DEF: ${totalDef}</p>
+      `;
+      const wdiv = document.createElement('div');
+      wdiv.className = 'weapons-panel';
+      wdefs.forEach(w => {
+        const img = document.createElement('img');
+        img.src = `${ASSETS_BASE_URL}/assets/weapons/${w.id}.png`;
+        img.title = `${w.name}\nATK:${w.baseStats.attack + lvl*w.scaling.attackPerLevel} DEF:${w.baseStats.defense + lvl*w.scaling.defensePerLevel}`;
+        wdiv.append(img);
+      });
+
+      root.append(badge, cardImg, stats, wdiv);
+      errBox.textContent = '';
     }
-    catch(e) {
-      errBox.textContent = 'Engine error: ' + e.message;
+    catch(err) {
+      document.getElementById('demo-errors').textContent = 'Engine error: ' + err.message;
     }
   })();
   </script>
 </body>
 </html>
-
-
-
-
-
-
