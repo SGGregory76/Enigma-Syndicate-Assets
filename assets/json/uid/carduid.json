@@ -2,6 +2,6 @@
   "vito_the_intimidator":   { "faction": "enforcers",    "displayName": "Vito the Intimidator" },
   "lola_the_quick":         { "faction": "undercutters",  "displayName": "Lola the Quick"  },
   "bruno_the_tank":         { "faction": "syndicate",    "displayName": "Bruno the Tank"  }
-  // …and so on for all your cardIds
+  
 }
 
