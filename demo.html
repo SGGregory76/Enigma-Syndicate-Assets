@@ -12,23 +12,26 @@
     .stats-panel { font-family: monospace; margin: 10px 0; text-align:center; }
     .weapons-panel img { width: 30px; margin: 0 5px; vertical-align:middle; }
   </style>
+</head>
+<body>
+  <div id="game-root"></div>
+  <pre id="demo-errors"></pre>
 
-  <!-- Firebase SDKs -->
+  <!-- 1) Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js"></script>
 
-  <!-- Assets base URL -->
+  <!-- 2) Assets base URL -->
   <script>
     window.ASSETS_BASE_URL =
       'https://SGGregory76.github.io/Enigma-Syndicate-Assets';
   </script>
 
-  <!-- Inline game-engine with error capture -->
+  <!-- 3) Inline game engine (defines initGame) -->
   <script>
   (function(window){
     try {
-      // —— Firebase init ——  
       const cfg = {
         apiKey: "AIzaSyCiFF0giW60YhEF9MPF8RMMETXkNW9vv2Y",
         authDomain: "sandbox-mafia.firebaseapp.com",
@@ -43,12 +46,12 @@
       let uid = null;
       const xpToLevel = xp => Math.floor(xp/100)+1;
 
-      function initAuth(){
-        return new Promise((res, rej)=>{
-          auth.onAuthStateChanged(u=>{
+      function initAuth() {
+        return new Promise((res, rej) => {
+          auth.onAuthStateChanged(u => {
             if(u){ uid=u.uid; res(u); }
             else auth.signInAnonymously()
-              .then(c=>{ uid=c.user.uid; res(c.user); })
+              .then(c => { uid=c.user.uid; res(c.user); })
               .catch(rej);
           });
         });
@@ -59,10 +62,17 @@
         if(!r.ok) throw new Error(`Fetch failed ${r.status}`);
         return r.json();
       }
-      function fetchPlayer(){ return db.ref(`/players/${uid}`).once('value').then(s=>s.val()); }
-      function fetchFaction(f){ return db.ref(`/factions/${f}`).once('value').then(s=>s.val()); }
-      function fetchWeapon(id){
-        return fetchJSON(`${window.ASSETS_BASE_URL}/assets/json/weapons/${id}.json`);
+
+      function fetchPlayer() {
+        return db.ref(`/players/${uid}`).once('value').then(s=>s.val());
+      }
+      function fetchFaction(f) {
+        return db.ref(`/factions/${f}`).once('value').then(s=>s.val());
+      }
+      function fetchWeapon(id) {
+        return fetchJSON(
+          `${window.ASSETS_BASE_URL}/assets/json/weapons/${id}.json`
+        );
       }
 
       async function renderCard(id){
@@ -71,7 +81,7 @@
         const wdefs= await Promise.all(data.weapons.map(fetchWeapon));
         const fac  = await fetchFaction(data.faction);
         let atk=0, def=0;
-        wdefs.forEach(w=>{
+        wdefs.forEach(w => {
           atk += w.baseStats.attack + lvl*w.scaling.attackPerLevel;
           def += w.baseStats.defense + lvl*w.scaling.defensePerLevel;
         });
@@ -83,7 +93,7 @@
           src:`${window.ASSETS_BASE_URL}/assets/factions/${data.faction}.png`,
           className:'faction-badge'
         });
-        const card  = Object.assign(document.createElement('img'), {
+        const card = Object.assign(document.createElement('img'), {
           src:`${window.ASSETS_BASE_URL}/assets/cards/${data.cardId}.png`,
           className:'card-image'
         });
@@ -99,10 +109,10 @@
         `;
         const wp = document.createElement('div');
         wp.className = 'weapons-panel';
-        wdefs.forEach(w=>{
+        wdefs.forEach(w => {
           const img = document.createElement('img');
           img.src   = `${window.ASSETS_BASE_URL}/assets/weapons/${w.id}.png`;
-          img.title = `${w.name} ATK:${w.baseStats.attack + lvl*w.scaling.attackPerLevel}, DEF:${w.baseStats.defense + lvl*w.scaling.defensePerLevel}`;
+          img.title = `${w.name} ATK:${w.baseStats.attack+lvl*w.scaling.attackPerLevel}, DEF:${w.baseStats.defense+lvl*w.scaling.defensePerLevel}`;
           wp.append(img);
         });
 
@@ -115,32 +125,20 @@
       };
 
     } catch(err) {
-      document.addEventListener('DOMContentLoaded', ()=>{
-        const e = document.getElementById('demo-errors');
-        if(e) e.textContent = 'Engine init error: ' + err.message;
-      });
+      document.getElementById('demo-errors').textContent =
+        'Engine init error: ' + err.message;
     }
   })(window);
   </script>
-  <!-- end inline engine -->
-</head>
-<body>
-  <div id="game-root"></div>
-  <pre id="demo-errors"></pre>
 
+  <!-- 4) Kick off the game -->
   <script>
-    // kick it off when fully loaded
-    window.addEventListener('load', ()=>{
-      try {
-        if(typeof initGame==='function'){
-          initGame('game-root');
-        } else {
-          document.getElementById('demo-errors').textContent =
-            'initGame not defined after load.';
-        }
-      } catch(e){
+    window.addEventListener('load', () => {
+      if (typeof initGame === 'function') {
+        initGame('game-root');
+      } else {
         document.getElementById('demo-errors').textContent =
-          'Render error: ' + e.message;
+          'initGame not defined after load.';
       }
     });
   </script>
