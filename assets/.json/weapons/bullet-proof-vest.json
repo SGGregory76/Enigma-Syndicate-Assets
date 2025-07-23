@@ -1,0 +1,13 @@
+{
+  "id": "bulletproof-vest",
+  "name": "Bulletproof Vest",
+  "image": "/assets/weapons/bulletproof-vest.png",
+  "baseStats": {
+    "attack": 0,
+    "defense": 12
+  },
+  "scaling": {
+    "attackPerLevel": 0,
+    "defensePerLevel": 1
+  }
+}
