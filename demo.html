@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Enigma Syndicate Game Demo</title>
+  <style>
+    /* optional minimal CSS to size the game */
+    body { margin:0; padding:0; }
+    #game-root { width:100%; max-width:400px; margin:20px auto; }
+  </style>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js"></script>
+
+  <!-- Tell the engine where assets live -->
+  <script>
+    window.ASSETS_BASE_URL =
+      'https://SGGregory76.github.io/Enigma-Syndicate-Assets';
+  </script>
+
+  <!-- Your bundled engine -->
+  <script src="https://SGGregory76.github.io/Enigma-Syndicate-Assets/game-engine.umd.js"></script>
+</head>
+<body>
+  <!-- Game container -->
+  <div id="game-root"></div>
+
+  <!-- Kick off the engine -->
+  <script>
+    // Wait for scripts to load
+    window.addEventListener('load', () => {
+      if (typeof initGame === 'function') {
+        initGame('game-root');
+      } else {
+        document.getElementById('game-root')
+          .innerText = 'Engine failed to load.';
+      }
+    });
+  </script>
+</body>
+</html>
