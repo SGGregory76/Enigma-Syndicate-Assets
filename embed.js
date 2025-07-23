@@ -1,19 +1,60 @@
-// embed.js — self-contained Enigma Syndicate card loader
+// embed.js — Enigma Syndicate card with blog-friendly styling
 (async function(){
   // 1) Inject scoped CSS
   const css = `
-    #enigma-game-root { width:100%; max-width:400px; margin:20px auto; background:#fff; padding:16px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
-    #enigma-game-root .faction-badge { width:40px; display:block; margin:0 auto 8px; }
-    #enigma-game-root .card-image      { width:100%; display:block; border-radius:4px; }
-    #enigma-game-root .stats-panel     { font-family:monospace; text-align:center; margin:10px 0; }
-    #enigma-game-root .weapons-panel img { width:30px; margin:0 5px; vertical-align:middle; }
-    #enigma-error { color:red; text-align:center; white-space:pre-wrap; margin-top:10px; }
+    /* make the card “fit” your post content */
+    #enigma-game-root {
+      box-sizing: border-box;
+      width: 100%;
+      max-width: 500px;       /* adjust to taste */
+      margin: 1.5em auto;     /* breathing room */
+      background: var(--bg-body,#fff);  /* inherit blog background */
+      border: 1px solid var(--border-color,#ddd);
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      font-family: inherit;    /* match blog font */
+    }
+    #enigma-game-root .faction-badge {
+      width: 40px;
+      display: block;
+      margin: 0.5em auto;
+    }
+    #enigma-game-root .card-image {
+      width: 100%;
+      display: block;
+    }
+    #enigma-game-root .stats-panel {
+      padding: 0.75em 1em;
+      font-family: inherit;
+      text-align: center;
+      color: var(--text-color,#333);
+    }
+    #enigma-game-root .stats-panel p {
+      margin: 0.25em 0;
+      line-height: 1.2;
+    }
+    #enigma-game-root .weapons-panel {
+      padding: 0.5em 1em 1em;
+      text-align: center;
+    }
+    #enigma-game-root .weapons-panel img {
+      width: 30px;
+      margin: 0 4px;
+      vertical-align: middle;
+    }
+    #enigma-error {
+      text-align: center;
+      color: red;
+      margin-top: 0.5em;
+      font-family: inherit;
+    }
   `;
   const style = document.createElement('style');
   style.textContent = css;
   document.head.appendChild(style);
 
-  // 2) Create error box if missing
+  // 2) Ensure root + error exist
   let root = document.getElementById('enigma-game-root');
   if (!root) {
     root = document.createElement('div');
@@ -32,21 +73,23 @@
     // 3) Load Firebase compat if needed
     if (!window.firebase) {
       await new Promise((res, rej) => {
-        const s1 = document.createElement('script');
-        s1.src = 'https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js';
-        const s2 = document.createElement('script');
-        s2.src = 'https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js';
-        const s3 = document.createElement('script');
-        s3.src = 'https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js';
-        let loaded = 0;
-        function check() { if (++loaded === 3) res(); }
-        s1.onload = s2.onload = s3.onload = check;
-        s1.onerror = s2.onerror = s3.onerror = rej;
-        document.head.append(s1,s2,s3);
+        const urls = [
+          'https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js',
+          'https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js',
+          'https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js'
+        ];
+        let count = 0;
+        urls.forEach(src => {
+          const s = document.createElement('script');
+          s.src = src;
+          s.onload = () => (++count === urls.length) && res();
+          s.onerror = rej;
+          document.head.appendChild(s);
+        });
       });
     }
 
-    // 4) Init Firebase
+    // 4) Initialize Firebase
     firebase.initializeApp({
       apiKey: "AIzaSyCiFF0giW60YhEF9MPF8RMMETXkNW9vv2Y",
       authDomain: "sandbox-mafia.firebaseapp.com",
@@ -61,16 +104,18 @@
     // 5) XP → level helper
     const xpToLevel = xp => Math.floor(xp/100) + 1;
 
-    // 6) Authenticate
+    // 6) Anonymous auth
     let uid;
     await new Promise((res, rej) => {
       auth.onAuthStateChanged(u => {
         if (u) uid = u.uid, res();
-        else auth.signInAnonymously().then(c=>{uid=c.user.uid;res();}).catch(rej);
+        else auth.signInAnonymously()
+                 .then(c => { uid = c.user.uid; res(); })
+                 .catch(rej);
       });
     });
 
-    // 7) Card metadata
+    // 7) Inline card metadata
     const cardMeta = {
       vito_the_intimidator:{ faction:'enforcers',   displayName:'Vito the Intimidator' },
       lola_the_quick:      { faction:'undercutters', displayName:'Lola the Quick'   },
@@ -78,45 +123,43 @@
     };
 
     // 8) Fetch or seed player
-    let player = await db.ref(`/players/${uid}`).once('value').then(s=>s.val());
+    let player = await db.ref(`/players/${uid}`).once('value').then(s => s.val());
     if (!player) {
       const cards = Object.keys(cardMeta);
       const cardId = cards[Math.floor(Math.random()*cards.length)];
       player = {
         cardId,
         faction: cardMeta[cardId].faction,
-        weapons: ['tommy-gun','bulletproof_vest'],
-        stats: { health:100, energy:50, experience:0 },
-        abilities: { quick_shot:{ attackBonus:5, cooldown:30 } },
-        lastUpdated: new Date().toISOString()
+        weapons:['tommy-gun','bulletproof_vest'],
+        stats:{health:100,energy:50,experience:0},
+        abilities:{quick_shot:{attackBonus:5,cooldown:30}},
+        lastUpdated:new Date().toISOString()
       };
       await db.ref(`/players/${uid}`).set(player);
     }
 
-    // 9) JSON fetch helper
-    async function fetchJSON(path) {
+    // 9) fetchJSON helper
+    async function fetchJSON(path){
       const r = await fetch(path);
       if (!r.ok) throw new Error(`Fetch ${path} failed (${r.status})`);
       return r.json();
     }
 
-    // 10) Load weapons
+    // 10) Load weapons and faction
     const wdefs = await Promise.all(
-      player.weapons.map(id => fetchJSON(
-        `${window.ASSETS_BASE_URL}/assets/json/weapons/${id}.json`
-      ))
+      player.weapons.map(id =>
+        fetchJSON(`${window.ASSETS_BASE_URL}/assets/json/weapons/${id}.json`)
+      )
     );
-
-    // 11) Load faction bonuses (fallback)
     let fac;
     try {
       fac = await db.ref(`/factions/${player.faction}`).once('value').then(s=>s.val());
       if (!fac || !fac.bonuses) throw 0;
     } catch {
-      fac = { bonuses:{ attack:0, defense:0 } };
+      fac = { bonuses:{attack:0,defense:0} };
     }
 
-    // 12) Compute totals
+    // 11) Compute totals
     const lvl = xpToLevel(player.stats.experience);
     let totalAtk=0, totalDef=0;
     wdefs.forEach(w=>{
@@ -126,7 +169,7 @@
     totalAtk += fac.bonuses.attack;
     totalDef += fac.bonuses.defense;
 
-    // 13) Render
+    // 12) Render
     root.innerHTML = '';
     root.append(
       Object.assign(document.createElement('img'),{
@@ -139,18 +182,16 @@
       }),
       Object.assign(document.createElement('div'),{
         className:'stats-panel',
-        innerHTML:
-          `<p>${cardMeta[player.cardId].displayName}</p>
-           <p>Level: ${lvl}</p>
-           <p>Health: ${player.stats.health}</p>
-           <p>Energy: ${player.stats.energy}</p>
-           <p>XP: ${player.stats.experience}</p>
-           <p>Total ATK: ${totalAtk}</p>
-           <p>Total DEF: ${totalDef}</p>`
+        innerHTML:`
+          <p>${cardMeta[player.cardId].displayName}</p>
+          <p>Level: ${lvl}</p>
+          <p>Health: ${player.stats.health}</p>
+          <p>Energy: ${player.stats.energy}</p>
+          <p>XP: ${player.stats.experience}</p>
+          <p>Total ATK: ${totalAtk}</p>
+          <p>Total DEF: ${totalDef}</p>`
       }),
-      Object.assign(document.createElement('div'),{
-        className:'weapons-panel'
-      })
+      Object.assign(document.createElement('div'),{className:'weapons-panel'})
     );
     const wp = root.querySelector('.weapons-panel');
     wdefs.forEach(w=>{
@@ -162,7 +203,7 @@
 
     err.textContent = '';
   }
-  catch(e) {
+  catch(e){
     err.textContent = 'Error: '+e.message;
   }
 })();
