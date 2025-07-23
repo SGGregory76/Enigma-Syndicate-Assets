@@ -4,12 +4,13 @@
   <meta charset="UTF-8" />
   <title>Enigma Syndicate Game Demo</title>
   <style>
-    body { margin:0; padding:0; }
+    body { margin:0; padding:20px; font-family:sans-serif; }
     #game-root { width:100%; max-width:400px; margin:20px auto; }
-    .faction-badge { width: 50px; }
-    .card-image  { width: 100%; }
-    .stats-panel { font-family: monospace; margin: 10px 0; }
-    .weapons-panel img { width: 40px; margin-right: 5px; }
+    #demo-errors { color:red; white-space: pre-wrap; }
+    .faction-badge { width: 40px; display:block; margin:0 auto; }
+    .card-image  { width:100%; display:block; margin:10px auto; }
+    .stats-panel { font-family: monospace; margin: 10px 0; text-align:center; }
+    .weapons-panel img { width: 30px; margin: 0 5px; vertical-align:middle; }
   </style>
 
   <!-- Firebase SDKs -->
@@ -23,117 +24,128 @@
       'https://SGGregory76.github.io/Enigma-Syndicate-Assets';
   </script>
 
-  <!-- Inline game-engine IIFE (defines initGame) -->
+  <!-- Inline game-engine (IIFE) with error capture -->
   <script>
-  ;(function(window) {
-    // Firebase config (Realtime DB)
-    const cfg = {
-      apiKey: "AIzaSyCiFF0giW60YhEF9MPF8RMMETXkNW9vv2Y",
-      authDomain: "sandbox-mafia.firebaseapp.com",
-      databaseURL:"https://sandbox-mafia-default-rtdb.firebaseio.com",
-      projectId:"sandbox-mafia",
-      storageBucket:"sandbox-mafia.firebasestorage.app",
-      messagingSenderId:"966783573980",
-      appId:"1:966783573980:web:a07a7b66d7d9a057dab919"
-    };
-    firebase.initializeApp(cfg);
-    const auth = firebase.auth(), db = firebase.database();
-    let uid = null;
-    const xpToLevel = xp => Math.floor(xp/100)+1;
+  (function(window){
+    try {
+      // —— Firebase init ——  
+      const cfg = {
+        apiKey: "AIzaSyCiFF0giW60YhEF9MPF8RMMETXkNW9vv2Y",
+        authDomain: "sandbox-mafia.firebaseapp.com",
+        databaseURL: "https://sandbox-mafia-default-rtdb.firebaseio.com",
+        projectId: "sandbox-mafia",
+        storageBucket: "sandbox-mafia.firebasestorage.app",
+        messagingSenderId: "966783573980",
+        appId: "1:966783573980:web:a07a7b66d7d9a057dab919"
+      };
+      firebase.initializeApp(cfg);
+      const auth = firebase.auth(), db = firebase.database();
+      let uid = null;
 
-    function initAuth() {
-      return new Promise((res, rej) => {
-        auth.onAuthStateChanged(u => {
-          if (u) { uid = u.uid; res(u); }
-          else {
-            auth.signInAnonymously()
-              .then(c => { uid = c.user.uid; res(c.user); })
+      function xpToLevel(xp){ return Math.floor(xp/100)+1; }
+
+      function initAuth(){
+        return new Promise((res, rej)=>{
+          auth.onAuthStateChanged(u=>{
+            if(u){ uid=u.uid; res(u); }
+            else auth.signInAnonymously()
+              .then(c=>{ uid=c.user.uid; res(c.user); })
               .catch(rej);
-          }
+          });
         });
+      }
+
+      async function fetchJSON(path){
+        const r = await fetch(path);
+        if(!r.ok) throw new Error(`Failed ${r.status}`);
+        return r.json();
+      }
+      function fetchPlayer(){
+        return db.ref(`/players/${uid}`).once('value').then(s=>s.val());
+      }
+      function fetchFaction(f){
+        return db.ref(`/factions/${f}`).once('value').then(s=>s.val());
+      }
+      function fetchWeapon(id){
+        return fetchJSON(`${window.ASSETS_BASE_URL}/assets/json/weapons/${id}.json`);
+      }
+
+      async function renderCard(id){
+        const data = await fetchPlayer();
+        const lvl  = xpToLevel(data.stats.experience);
+        const wdefs= await Promise.all(data.weapons.map(w=>fetchWeapon(w)));
+        const fac  = await fetchFaction(data.faction);
+        let atk=0, def=0;
+        wdefs.forEach(w=>{
+          atk += w.baseStats.attack + lvl*w.scaling.attackPerLevel;
+          def += w.baseStats.defense + lvl*w.scaling.defensePerLevel;
+        });
+        atk += fac.bonuses.attack; def += fac.bonuses.defense;
+
+        const c = document.getElementById(id);
+        c.innerHTML = '';
+        const badge = Object.assign(document.createElement('img'), {
+          src:`${window.ASSETS_BASE_URL}/assets/factions/${data.faction}.png`,
+          className:'faction-badge'
+        });
+        const card  = Object.assign(document.createElement('img'), {
+          src:`${window.ASSETS_BASE_URL}/assets/cards/${data.cardId}.png`,
+          className:'card-image'
+        });
+        const stats = document.createElement('div');
+        stats.className = 'stats-panel';
+        stats.innerHTML = `
+          <p>Level: ${lvl}</p>
+          <p>HP: ${data.stats.health}</p>
+          <p>EN: ${data.stats.energy}</p>
+          <p>XP: ${data.stats.experience}</p>
+          <p>ATK: ${atk}</p>
+          <p>DEF: ${def}</p>
+        `;
+        const wp = document.createElement('div');
+        wp.className = 'weapons-panel';
+        wdefs.forEach(w=>{
+          const img = document.createElement('img');
+          img.src   = `${window.ASSETS_BASE_URL}/assets/weapons/${w.id}.png`;
+          img.title = `${w.name} ATK:${w.baseStats.attack + lvl*w.scaling.attackPerLevel}, DEF:${w.baseStats.defense + lvl*w.scaling.defensePerLevel}`;
+          wp.append(img);
+        });
+
+        c.append(badge, card, stats, wp);
+      }
+
+      window.initGame = async function(id){
+        await initAuth();
+        await renderCard(id);
+      };
+
+    } catch(err) {
+      document.addEventListener('DOMContentLoaded', ()=>{
+        const e = document.getElementById('demo-errors');
+        if(e) e.textContent = 'Engine init error: ' + err.message;
       });
     }
-
-    async function fetchJSON(path) {
-      const r = await fetch(path);
-      if (!r.ok) throw new Error(`Fetch failed ${r.status}`);
-      return r.json();
-    }
-
-    function fetchPlayer() {
-      return db.ref(`/players/${uid}`).once('value').then(s=>s.val());
-    }
-    function fetchFaction(f) {
-      return db.ref(`/factions/${f}`).once('value').then(s=>s.val());
-    }
-    function fetchEncounter(e) {
-      return db.ref(`/encounters/${e}`).once('value').then(s=>s.val());
-    }
-    function fetchWeapon(id) {
-      return fetchJSON(`${window.ASSETS_BASE_URL}/assets/json/weapons/${id}.json`);
-    }
-
-    async function renderCard(containerId, data) {
-      const c = document.getElementById(containerId);
-      c.innerHTML = '';
-      const lvl = xpToLevel(data.stats.experience);
-      const wdefs = await Promise.all(data.weapons.map(fetchWeapon));
-      let atk=0, def=0;
-      wdefs.forEach(w => {
-        atk += w.baseStats.attack + lvl*w.scaling.attackPerLevel;
-        def += w.baseStats.defense + lvl*w.scaling.defensePerLevel;
-      });
-      const fac = await fetchFaction(data.faction);
-      atk += fac.bonuses.attack; def += fac.bonuses.defense;
-
-      const badge = Object.assign(document.createElement('img'), {
-        src: `${window.ASSETS_BASE_URL}/assets/factions/${data.faction}.png`,
-        className: 'faction-badge'
-      });
-      const card = Object.assign(document.createElement('img'), {
-        src: `${window.ASSETS_BASE_URL}/assets/cards/${data.cardId}.png`,
-        className: 'card-image'
-      });
-      const stats = document.createElement('div');
-      stats.className = 'stats-panel';
-      stats.innerHTML = `
-        <p>Level: ${lvl}</p>
-        <p>Health: ${data.stats.health}</p>
-        <p>Energy: ${data.stats.energy}</p>
-        <p>XP: ${data.stats.experience}</p>
-        <p>ATK: ${atk}</p>
-        <p>DEF: ${def}</p>
-      `;
-      const wp = document.createElement('div');
-      wp.className = 'weapons-panel';
-      wdefs.forEach(w => {
-        const img = document.createElement('img');
-        img.src = `${window.ASSETS_BASE_URL}/assets/weapons/${w.id}.png`;
-        img.title = `${w.name} ATK:${w.baseStats.attack+lvl*w.scaling.attackPerLevel} DEF:${w.baseStats.defense+lvl*w.scaling.defensePerLevel}`;
-        wp.append(img);
-      });
-
-      c.append(badge, card, stats, wp);
-    }
-
-    window.initGame = async function(containerId) {
-      await initAuth();
-      const player = await fetchPlayer();
-      await renderCard(containerId, player);
-    };
   })(window);
   </script>
-  <!-- End inline engine -->
+  <!-- end inline engine -->
 </head>
 <body>
   <div id="game-root"></div>
+  <pre id="demo-errors"></pre>
+
   <script>
-    window.addEventListener('load', () => {
-      if (typeof initGame === 'function') {
-        initGame('game-root');
-      } else {
-        document.getElementById('game-root').innerText =
-          'Engine failed to load.';
+    // kick it off
+    window.addEventListener('load', ()=>{
+      try {
+        if(typeof initGame==='function'){
+          initGame('game-root');
+        } else {
+          document.getElementById('demo-errors').textContent =
+            'initGame not defined after load.';
+        }
+      } catch(e){
+        document.getElementById('demo-errors').textContent =
+          'Render error: ' + e.message;
       }
     });
   </script>
