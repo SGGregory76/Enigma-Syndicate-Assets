@@ -7,17 +7,7 @@
     "defense": 0
   },
   "scaling": {
-    // each player level adds +2 attack
     "attackPerLevel": 2,
-    // optional defense scaling
     "defensePerLevel": 0
   }
 }
-
-const level = playerData.stats.level;  // e.g. 1,2,3…
-const weapon = fetchWeapon(weaponId);
-
-const attackValue  = weapon.baseStats.attack
-                     + level * weapon.scaling.attackPerLevel;
-const defenseValue = weapon.baseStats.defense
-                     + level * weapon.scaling.defensePerLevel;
