@@ -13,21 +13,26 @@
     .weapons-panel img { width: 30px; margin: 0 5px; vertical-align:middle; }
   </style>
 
-  <!-- Firebase Compat SDKs -->
+  <!-- 1) Firebase compat SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 
+  <!-- 2) Point to your GitHub Pages assets -->
   <script>
-    // Tell the engine where your assets live
     window.ASSETS_BASE_URL = 'https://SGGregory76.github.io/Enigma-Syndicate-Assets';
   </script>
+</head>
+<body>
+  <div id="game-root"></div>
+  <pre id="demo-errors">Loading engine…</pre>
 
-  <!-- Inline game engine (defines initGame) -->
+  <!-- 3) Inline engine + robust error handling -->
   <script>
-  (function(window){
+  (async function(){
+    const errBox = document.getElementById('demo-errors');
     try {
-      // —— Firebase init ——  
+      // —— Initialize Firebase ——
       const cfg = {
         apiKey: "AIzaSyCiFF0giW60YhEF9MPF8RMMETXkNW9vv2Y",
         authDomain: "sandbox-mafia.firebaseapp.com",
@@ -42,46 +47,55 @@
       let uid = null;
       const xpToLevel = xp => Math.floor(xp/100) + 1;
 
+      // —— Auth helper ——
       function initAuth() {
         return new Promise((res, rej) => {
-          auth.onAuthStateChanged(u => {
-            if (u) { uid = u.uid; res(u); }
-            else auth.signInAnonymously()
-              .then(c => { uid = c.user.uid; res(c.user); })
-              .catch(rej);
+          auth.onAuthStateChanged(user => {
+            if (user) {
+              uid = user.uid;
+              res(user);
+            } else {
+              auth.signInAnonymously()
+                .then(cred => {
+                  uid = cred.user.uid;
+                  res(cred.user);
+                })
+                .catch(rej);
+            }
           });
         });
       }
 
+      // —— Fetch helpers ——
       async function fetchJSON(path) {
         const r = await fetch(path);
-        if (!r.ok) throw new Error(`Fetch ${path} failed ${r.status}`);
+        if (!r.ok) throw new Error(`Fetch ${path} failed (${r.status})`);
         return r.json();
       }
-
       function fetchPlayer() {
-        return db.ref(`/players/${uid}`).once('value').then(s => s.val());
+        return db.ref(`/players/${uid}`).once('value').then(s=>s.val());
       }
-      function fetchFaction(id) {
-        return db.ref(`/factions/${id}`).once('value').then(s => s.val());
+      function fetchFaction(f) {
+        return db.ref(`/factions/${f}`).once('value').then(s=>s.val());
       }
       function fetchWeapon(id) {
         return fetchJSON(`${window.ASSETS_BASE_URL}/assets/json/weapons/${id}.json`);
       }
 
-      async function renderCard(containerId) {
-        const data = await fetchPlayer();
-        const lvl  = xpToLevel(data.stats.experience);
-        const wdefs= await Promise.all(data.weapons.map(fetchWeapon));
-        const fac  = await fetchFaction(data.faction);
+      // —— Render card UI ——
+      async function renderCard(containerId, data) {
+        if (!data) throw new Error(`No player data for UID ${uid}`);
+        const lvl = xpToLevel(data.stats.experience);
+        const wdefs = await Promise.all(data.weapons.map(fetchWeapon));
+        const fac = await fetchFaction(data.faction);
 
-        let atk = 0, def = 0;
+        let totalAtk = 0, totalDef = 0;
         wdefs.forEach(w => {
-          atk += w.baseStats.attack + lvl * w.scaling.attackPerLevel;
-          def += w.baseStats.defense + lvl * w.scaling.defensePerLevel;
+          totalAtk += w.baseStats.attack + lvl * w.scaling.attackPerLevel;
+          totalDef += w.baseStats.defense + lvl * w.scaling.defensePerLevel;
         });
-        atk += (fac.bonuses?.attack || 0);
-        def += (fac.bonuses?.defense || 0);
+        totalAtk += (fac.bonuses?.attack || 0);
+        totalDef += (fac.bonuses?.defense || 0);
 
         const root = document.getElementById(containerId);
         root.innerHTML = '';
@@ -90,62 +104,59 @@
           src: `${window.ASSETS_BASE_URL}/assets/factions/${data.faction}.png`,
           className: 'faction-badge'
         });
-        const card = Object.assign(document.createElement('img'), {
+        const cardImg = Object.assign(document.createElement('img'), {
           src: `${window.ASSETS_BASE_URL}/assets/cards/${data.cardId}.png`,
           className: 'card-image'
         });
-        const stats = document.createElement('div');
-        stats.className = 'stats-panel';
-        stats.innerHTML = `
+        const statsDiv = document.createElement('div');
+        statsDiv.className = 'stats-panel';
+        statsDiv.innerHTML = `
           <p>Level: ${lvl}</p>
           <p>Health: ${data.stats.health}</p>
           <p>Energy: ${data.stats.energy}</p>
           <p>XP: ${data.stats.experience}</p>
-          <p>Total ATK: ${atk}</p>
-          <p>Total DEF: ${def}</p>
+          <p>Total ATK: ${totalAtk}</p>
+          <p>Total DEF: ${totalDef}</p>
         `;
-        const wp = document.createElement('div');
-        wp.className = 'weapons-panel';
+        const weaponsDiv = document.createElement('div');
+        weaponsDiv.className = 'weapons-panel';
         wdefs.forEach(w => {
           const img = document.createElement('img');
           img.src   = `${window.ASSETS_BASE_URL}/assets/weapons/${w.id}.png`;
           img.title = `${w.name} — ATK:${w.baseStats.attack + lvl*w.scaling.attackPerLevel}, DEF:${w.baseStats.defense + lvl*w.scaling.defensePerLevel}`;
-          wp.append(img);
+          weaponsDiv.append(img);
         });
 
-        root.append(badge, card, stats, wp);
-        document.getElementById('demo-errors').textContent = '';
+        root.append(badge, cardImg, statsDiv, weaponsDiv);
+        errBox.textContent = ''; // clear any loading/errors
       }
 
+      // —— Expose & run initGame ——
       window.initGame = async function(containerId) {
-        await initAuth();
-        await renderCard(containerId);
+        try {
+          await initAuth();
+          const playerData = await fetchPlayer();
+          await renderCard(containerId, playerData);
+        } catch(renderErr) {
+          errBox.textContent = 'Engine render error: ' + renderErr.message;
+        }
       };
+
+      // Kick things off
+      if (typeof initGame === 'function') {
+        await window.initGame('game-root');
+      } else {
+        throw new Error('initGame not defined');
+      }
     }
     catch(err) {
-      document.getElementById('demo-errors').textContent =
-        'Engine init error: ' + err.message;
+      errBox.textContent = 'Engine init error: ' + err.message;
     }
-  })(window);
-  </script>
-</head>
-<body>
-  <div id="game-root"></div>
-  <pre id="demo-errors">Loading engine…</pre>
-
-  <!-- Kick off the game when everything’s ready -->
-  <script>
-    window.addEventListener('load', () => {
-      if (typeof initGame === 'function') {
-        initGame('game-root');
-      } else {
-        document.getElementById('demo-errors').textContent =
-          'initGame not defined after load.';
-      }
-    });
+  })();
   </script>
 </body>
 </html>
+
 
 
 
