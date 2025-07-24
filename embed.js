@@ -1,3 +1,18 @@
+ // after `uid = user.uid;`
+
+document.getElementById('game-root').insertAdjacentHTML(
+
+  'beforebegin',
+
+  `<div style="text-align:center; font-size:0.9rem; color:#555; margin:8px;">
+
+     Your UID: <strong>${uid}</strong>
+
+   </div>`
+
+);
+
+
 // embed.js — per-UID only, no overrides
 (async function(){
   const ASSETS_BASE_URL = 'https://SGGregory76.github.io/Enigma-Syndicate-Assets';
