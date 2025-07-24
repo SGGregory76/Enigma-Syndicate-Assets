@@ -1,0 +1,34 @@
+{
+  "cardDefs": {
+    "vito_the_intimidator": {
+      "faction": "enforcers",
+      "displayName": "Vito the Enforcer"
+    },
+    "lola_the_quick": {
+      "faction": "undercutters",
+      "displayName": "Maria the Shade"
+    },
+    "bruno_the_tank": {
+      "faction": "syndicate",
+      "displayName": "Joey the Ghost"
+    }
+  },
+  "factions": {
+    "enforcers": { "bonuses": { "attack": 2, "defense": 1 } },
+    "undercutters":{ "bonuses": { "attack": 1, "defense": 2 } },
+    "syndicate":   { "bonuses": { "attack": 3, "defense": 3 } }
+  },
+  "weaponMeta": {
+    "tommy-gun": {
+      "baseStats": { "attack": 15, "defense": 0 },
+      "scaling":   { "attackPerLevel": 2, "defensePerLevel": 0 }
+    },
+    "bulletproof_vest": {
+      "baseStats": { "attack": 0, "defense": 12 },
+      "scaling":   { "attackPerLevel": 0, "defensePerLevel": 1 }
+    }
+  },
+  "admins": {
+    "44uUpXEMt6bw1iaQauR6s1mu6mn1": true
+  }
+}
