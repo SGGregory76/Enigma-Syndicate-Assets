@@ -1,13 +1,21 @@
-// embed.js — fixed fetch URLs, persistent per-UID
+// embed.js — complete Enigma Syndicate player card + dynamic save logic
 (async function(){
-  // 0) Where your JSON & images live
+  // 0) Base URL for your GitHub‐hosted assets
   const ASSETS_BASE_URL = 'https://SGGregory76.github.io/Enigma-Syndicate-Assets';
 
-  // 1) Scoped CSS
+  // 1) Inject scoped CSS
   const css = `
-    #enigma-game-root { box-sizing:border-box; width:100%; max-width:500px; margin:1.5em auto;
-      background:var(--bg-body,#fff); border:1px solid var(--border-color,#ddd);
-      border-radius:6px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,0.1); font-family:inherit;
+    #enigma-game-root {
+      box-sizing: border-box;
+      width: 100%;
+      max-width: 500px;
+      margin: 1.5em auto;
+      background: var(--bg-body,#fff);
+      border: 1px solid var(--border-color,#ddd);
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      font-family: inherit;
     }
     #enigma-game-root .faction-badge { width:40px; display:block; margin:.5em auto; }
     #enigma-game-root .card-image      { width:100%; display:block; }
@@ -19,7 +27,7 @@
   `;
   document.head.appendChild(Object.assign(document.createElement('style'),{textContent:css}));
 
-  // 2) Container + error box
+  // 2) Ensure container & error box
   let root = document.getElementById('enigma-game-root');
   if (!root) {
     root = document.createElement('div');
@@ -35,11 +43,11 @@
   err.textContent = 'Loading game…';
 
   try {
-    // 3) Overrides
-    const forcedUid    = root.dataset.uid;
-    const forcedCardId = root.dataset.cardid;
+    // 3) Read page‐specific overrides
+    const forcedUid    = root.dataset.uid;     // if present, use this UID
+    const forcedCardId = root.dataset.cardid;  // if present, force this card
 
-    // 4) Load Firebase compat
+    // 4) Load Firebase compat SDKs if needed
     if (!window.firebase) {
       await new Promise((res, rej) => {
         const urls = [
@@ -47,16 +55,18 @@
           'https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js',
           'https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js'
         ];
-        let c=0;
-        urls.forEach(src=>{
-          const s=document.createElement('script');
-          s.src=src; s.onload=()=>{ if(++c===urls.length)res(); };
-          s.onerror=rej; document.head.appendChild(s);
+        let loaded = 0;
+        urls.forEach(src => {
+          const s = document.createElement('script');
+          s.src = src;
+          s.onload  = () => { if (++loaded === urls.length) res(); };
+          s.onerror = rej;
+          document.head.appendChild(s);
         });
       });
     }
 
-    // 5) Init Firebase
+    // 5) Initialize Firebase
     firebase.initializeApp({
       apiKey: "AIzaSyCiFF0giW60YhEF9MPF8RMMETXkNW9vv2Y",
       authDomain: "sandbox-mafia.firebaseapp.com",
@@ -68,31 +78,31 @@
     });
     const auth = firebase.auth(), db = firebase.database();
 
-    // 6) XP→level
-    const xpToLevel = xp => Math.floor(xp/100)+1;
+    // 6) XP → Level helper
+    const xpToLevel = xp => Math.floor(xp/100) + 1;
 
-    // 7) Auth
+    // 7) Authenticate anonymously, then apply forcedUid
     let uid;
     await new Promise((res, rej) => {
-      auth.onAuthStateChanged(u => {
-        if(u) uid=u.uid;
-        else auth.signInAnonymously().then(c=>uid=c.user.uid).catch(rej);
+      auth.onAuthStateChanged(user => {
+        if (user) uid = user.uid;
+        else auth.signInAnonymously()
+                 .then(c => { uid = c.user.uid; })
+                 .catch(rej);
         res();
       });
     });
     if (forcedUid) uid = forcedUid;
 
-    // 8) Card metadata
+    // 8) Inline card metadata
     const cardMeta = {
       vito_the_intimidator: { faction:'enforcers',   displayName:'Vito the Intimidator' },
       lola_the_quick:       { faction:'undercutters', displayName:'Lola the Quick'   },
       bruno_the_tank:       { faction:'syndicate',   displayName:'Bruno the Tank'   }
     };
 
-    // 9) Fetch existing record
+    // 9) Fetch or seed player record
     let player = await db.ref(`/players/${uid}`).once('value').then(s=>s.val());
-
-    // 10) Seed on first visit
     if (!player) {
       const cardId = (forcedCardId && cardMeta[forcedCardId])
                      ? forcedCardId
@@ -101,52 +111,57 @@
         cardId,
         faction: cardMeta[cardId].faction,
         weapons: ['tommy-gun','bulletproof_vest'],
-        stats: { health:100, energy:50, experience:0 },
-        abilities: { quick_shot:{ attackBonus:5, cooldown:30 } },
+        stats:   { health:100, energy:50, experience:0 },
+        abilities:{ quick_shot:{ attackBonus:5, cooldown:30 } },
         lastUpdated: new Date().toISOString()
       };
       await db.ref(`/players/${uid}`).set(player);
     }
-
-    // 11) Override in-memory if forcedCardId
+    // Override in-memory card if forcedCardId
     if (forcedCardId && cardMeta[forcedCardId]) {
-      player.cardId = forcedCardId;
+      player.cardId  = forcedCardId;
       player.faction = cardMeta[forcedCardId].faction;
     }
 
-    // 12) fetchJSON helper
-    async function fetchJSON(path){
-      const r = await fetch(path);
-      if(!r.ok) throw new Error(`Fetch ${path} failed (${r.status})`);
-      return r.json();
-    }
+    // 10) Inline weapon metadata
+    const weaponMeta = {
+      "tommy-gun": {
+        id: "tommy-gun", name: "Tommy Gun",
+        baseStats: { attack:15, defense:0 }, scaling:{attackPerLevel:2, defensePerLevel:0},
+        image:`${ASSETS_BASE_URL}/assets/weapons/tommy-gun.png`
+      },
+      "bulletproof_vest": {
+        id:"bulletproof_vest", name:"Bulletproof Vest",
+        baseStats:{attack:0, defense:12}, scaling:{attackPerLevel:0, defensePerLevel:1},
+        image:`${ASSETS_BASE_URL}/assets/weapons/bulletproof_vest.png`
+      }
+    };
+    const wdefs = player.weapons.map(id => {
+      const w = weaponMeta[id];
+      if (!w) throw new Error(`Unknown weapon ID "${id}"`);
+      return w;
+    });
 
-    // 13) Load weapon defs
-    const wdefs = await Promise.all(
-      player.weapons.map(id =>
-        fetchJSON(`${ASSETS_BASE_URL}/assets/json/weapons/${id}.json`)
-      )
-    );
-
-    // 14) Load faction bonuses
+    // 11) Load faction bonuses (fallback)
     let fac;
     try {
       fac = await db.ref(`/factions/${player.faction}`).once('value').then(s=>s.val());
-      if(!fac||!fac.bonuses) throw 0;
+      if (!fac || !fac.bonuses) throw 0;
     } catch {
       fac = { bonuses:{ attack:0, defense:0 } };
     }
 
-    // 15) Compute totals
+    // 12) Compute totals
     const lvl = xpToLevel(player.stats.experience);
-    let atk=0, def=0;
+    let totalAtk=0, totalDef=0;
     wdefs.forEach(w=>{
-      atk += w.baseStats.attack + lvl*w.scaling.attackPerLevel;
-      def += w.baseStats.defense + lvl*w.scaling.defensePerLevel;
+      totalAtk += w.baseStats.attack + lvl*w.scaling.attackPerLevel;
+      totalDef += w.baseStats.defense + lvl*w.scaling.defensePerLevel;
     });
-    atk += fac.bonuses.attack; def += fac.bonuses.defense;
+    totalAtk += fac.bonuses.attack;
+    totalDef += fac.bonuses.defense;
 
-    // 16) Render
+    // 13) Render the card
     root.innerHTML = '';
     root.append(
       Object.assign(document.createElement('img'),{src:`${ASSETS_BASE_URL}/assets/factions/${player.faction}.png`,className:'faction-badge'}),
@@ -157,22 +172,34 @@
          <p>Health: ${player.stats.health}</p>
          <p>Energy: ${player.stats.energy}</p>
          <p>XP: ${player.stats.experience}</p>
-         <p>Total ATK: ${atk}</p>
-         <p>Total DEF: ${def}</p>`}),
+         <p>Total ATK: ${totalAtk}</p>
+         <p>Total DEF: ${totalDef}</p>`}),
       Object.assign(document.createElement('div'),{className:'weapons-panel'})
     );
-    const wp = root.querySelector('.weapons-panel');
     wdefs.forEach(w=>{
       const img = document.createElement('img');
-      img.src = `${ASSETS_BASE_URL}/assets/weapons/${w.id}.png`;
-      img.title = `${w.name} — ATK:${w.baseStats.attack+lvl*w.scaling.attackPerLevel} DEF:${w.baseStats.defense+lvl*w.scaling.defensePerLevel}`;
-      wp.append(img);
+      img.src = w.image;
+      img.title= `${w.name} — ATK:${w.baseStats.attack+lvl*w.scaling.attackPerLevel} DEF:${w.baseStats.defense+lvl*w.scaling.defensePerLevel}`;
+      root.querySelector('.weapons-panel').append(img);
     });
-
     err.textContent = '';
+
+    //
+    // === Dynamic save helpers ===
+    //
+
+    // Overwrite the stats object
+    window.saveStats = async function(newStats) {
+      await db.ref(`/players/${uid}/stats`).set(newStats);
+    };
+
+    // Atomically increment experience
+    window.incrementExperience = async function(amount) {
+      await db.ref(`/players/${uid}/stats/experience`)
+              .transaction(xp => (xp||0) + amount);
+    };
   }
-  catch(e){
-    document.getElementById('enigma-error').textContent = 'Error: '+e.message;
+  catch (e) {
+    err.textContent = 'Error: ' + e.message;
   }
 })();
-
