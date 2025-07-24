@@ -76,20 +76,6 @@
     });
   });
   console.log("Your UID:", uid);
-
-// after `uid = user.uid;`
-
-document.getElementById('game-root').insertAdjacentHTML(
-
-  'beforebegin',
-
-  `<div style="text-align:center; font-size:0.9rem; color:#555; margin:8px;">
-
-     Your UID: <strong>${uid}</strong>
-
-   </div>`
-
-);
  
   // 6) Inline metadata
   const cardMeta = {
