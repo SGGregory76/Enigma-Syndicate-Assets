@@ -1,17 +1,3 @@
- // after `uid = user.uid;`
-
-document.getElementById('game-root').insertAdjacentHTML(
-
-  'beforebegin',
-
-  `<div style="text-align:center; font-size:0.9rem; color:#555; margin:8px;">
-
-     Your UID: <strong>${uid}</strong>
-
-   </div>`
-
-);
-
 
 // embed.js — per-UID only, no overrides
 (async function(){
@@ -91,6 +77,20 @@ document.getElementById('game-root').insertAdjacentHTML(
   });
   console.log("Your UID:", uid);
 
+// after `uid = user.uid;`
+
+document.getElementById('game-root').insertAdjacentHTML(
+
+  'beforebegin',
+
+  `<div style="text-align:center; font-size:0.9rem; color:#555; margin:8px;">
+
+     Your UID: <strong>${uid}</strong>
+
+   </div>`
+
+);
+ 
   // 6) Inline metadata
   const cardMeta = {
     vito_the_intimidator: { faction:'enforcers',   displayName:'Vito the Enforcer' },
