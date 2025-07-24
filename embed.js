@@ -131,6 +131,11 @@
         id:"brass-knuckles", name:"Brass Knuckles",
         baseStats:{attack:8, defense:2}, scaling:{attackPerLevel:1, defensePerLevel:1},
         image:`${ASSETS_BASE_URL}/assets/weapons/brass-knuckles.png`
+      },
+      "bulletproof_vest": {
+        id:"bulletproof_vest", name:"Bulletproof Vest",
+        baseStats:{attack:0, defense:12}, scaling:{attackPerLevel:0, defensePerLevel:1},
+        image:`${ASSETS_BASE_URL}/assets/weapons/bulletproof_vest.png`
       }
     };
     const wdefs = player.weapons.map(id => {
@@ -207,4 +212,3 @@
     err.textContent = 'Error: ' + e.message;
   }
 })();
-
