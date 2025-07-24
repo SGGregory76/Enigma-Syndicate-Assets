@@ -1,33 +1,30 @@
-// embed.js — complete Enigma Syndicate player card + dynamic save logic
+// embed.js — robust, self-contained Enigma card embed
 (async function(){
-  // 0) Base URL for your GitHub‐hosted assets
+  // 0) Base URL for all static assets
   const ASSETS_BASE_URL = 'https://SGGregory76.github.io/Enigma-Syndicate-Assets';
 
-  // 1) Inject scoped CSS
+  // 1) Scoped CSS for the card
   const css = `
     #enigma-game-root {
-      box-sizing: border-box;
-      width: 100%;
-      max-width: 500px;
-      margin: 1.5em auto;
-      background: var(--bg-body,#fff);
-      border: 1px solid var(--border-color,#ddd);
-      border-radius: 6px;
-      overflow: hidden;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
-      font-family: inherit;
+      box-sizing:border-box;
+      width:100%;max-width:500px;
+      margin:1.5em auto;
+      background:#fff;border:1px solid #ddd;
+      border-radius:6px;overflow:hidden;
+      box-shadow:0 1px 4px rgba(0,0,0,0.1);
+      font-family:inherit;
     }
     #enigma-game-root .faction-badge { width:40px; display:block; margin:.5em auto; }
     #enigma-game-root .card-image      { width:100%; display:block; }
-    #enigma-game-root .stats-panel     { padding:.75em 1em; text-align:center; color:var(--text-color,#333); }
+    #enigma-game-root .stats-panel     { padding:.75em 1em; text-align:center; color:#333; }
     #enigma-game-root .stats-panel p   { margin:.25em 0; line-height:1.2; }
     #enigma-game-root .weapons-panel   { padding:.5em 1em 1em; text-align:center; }
     #enigma-game-root .weapons-panel img { width:30px; margin:0 4px; vertical-align:middle; }
     #enigma-error { text-align:center; color:red; margin-top:.5em; font-family:inherit; }
   `;
-  document.head.appendChild(Object.assign(document.createElement('style'),{textContent:css}));
+  document.head.appendChild(Object.assign(document.createElement('style'),{ textContent: css }));
 
-  // 2) Ensure container & error box
+  // 2) Ensure container & error elements exist
   let root = document.getElementById('enigma-game-root');
   if (!root) {
     root = document.createElement('div');
@@ -43,23 +40,23 @@
   err.textContent = 'Loading game…';
 
   try {
-    // 3) Read page‐specific overrides
-    const forcedUid    = root.dataset.uid;     // if present, use this UID
-    const forcedCardId = root.dataset.cardid;  // if present, force this card
+    // 3) Read overrides if any
+    const forcedUid    = root.dataset.uid;
+    const forcedCardId = root.dataset.cardid;
 
-    // 4) Load Firebase compat SDKs if needed
+    // 4) Dynamically load Firebase compat SDKs
     if (!window.firebase) {
       await new Promise((res, rej) => {
-        const urls = [
+        const libs = [
           'https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js',
           'https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js',
           'https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js'
         ];
-        let loaded = 0;
-        urls.forEach(src => {
+        let count = 0;
+        libs.forEach(src => {
           const s = document.createElement('script');
           s.src = src;
-          s.onload  = () => { if (++loaded === urls.length) res(); };
+          s.onload = () => { if (++count === libs.length) res(); };
           s.onerror = rej;
           document.head.appendChild(s);
         });
@@ -78,17 +75,15 @@
     });
     const auth = firebase.auth(), db = firebase.database();
 
-    // 6) XP → Level helper
+    // 6) Helper: XP → Level
     const xpToLevel = xp => Math.floor(xp/100) + 1;
 
-    // 7) Authenticate anonymously, then apply forcedUid
+    // 7) Authenticate (anon) then apply forcedUid
     let uid;
     await new Promise((res, rej) => {
-      auth.onAuthStateChanged(user => {
-        if (user) uid = user.uid;
-        else auth.signInAnonymously()
-                 .then(c => { uid = c.user.uid; })
-                 .catch(rej);
+      auth.onAuthStateChanged(u => {
+        if (u) uid = u.uid;
+        else auth.signInAnonymously().then(c => uid = c.user.uid).catch(rej);
         res();
       });
     });
@@ -101,8 +96,9 @@
       bruno_the_tank:       { faction:'syndicate',   displayName:'Bruno the Tank'   }
     };
 
-    // 9) Fetch or seed player record
-    let player = await db.ref(`/players/${uid}`).once('value').then(s=>s.val());
+    // 9) Fetch or seed player
+    let snap   = await db.ref(`/players/${uid}`).once('value');
+    let player = snap.val();
     if (!player) {
       const cardId = (forcedCardId && cardMeta[forcedCardId])
                      ? forcedCardId
@@ -117,89 +113,82 @@
       };
       await db.ref(`/players/${uid}`).set(player);
     }
-    // Override in-memory card if forcedCardId
+    // In-memory override if forcedCardId
     if (forcedCardId && cardMeta[forcedCardId]) {
       player.cardId  = forcedCardId;
       player.faction = cardMeta[forcedCardId].faction;
     }
 
-    // 10) Inline weapon metadata
+    // 10) Inline weapon metadata (no JSON fetch)
     const weaponMeta = {
       "tommy-gun": {
-        id: "tommy-gun", name: "Tommy Gun",
-        baseStats: { attack:15, defense:0 }, scaling:{attackPerLevel:2, defensePerLevel:0},
+        name:"Tommy Gun", baseStats:{attack:15,defense:0}, scaling:{attackPerLevel:2,defensePerLevel:0},
         image:`${ASSETS_BASE_URL}/assets/weapons/tommy-gun.png`
       },
       "bulletproof_vest": {
-        id:"bulletproof_vest", name:"Bulletproof Vest",
-        baseStats:{attack:0, defense:12}, scaling:{attackPerLevel:0, defensePerLevel:1},
+        name:"Bulletproof Vest", baseStats:{attack:0,defense:12}, scaling:{attackPerLevel:0,defensePerLevel:1},
         image:`${ASSETS_BASE_URL}/assets/weapons/bulletproof_vest.png`
       }
     };
     const wdefs = player.weapons.map(id => {
       const w = weaponMeta[id];
       if (!w) throw new Error(`Unknown weapon ID "${id}"`);
-      return w;
+      return { id, ...w };
     });
 
-    // 11) Load faction bonuses (fallback)
+    // 11) Fetch faction bonuses (optional)
     let fac;
     try {
-      fac = await db.ref(`/factions/${player.faction}`).once('value').then(s=>s.val());
-      if (!fac || !fac.bonuses) throw 0;
+      fac = await db.ref(`/factions/${player.faction}/bonuses`).once('value').then(s=>s.val());
+      if (!fac) throw 0;
     } catch {
-      fac = { bonuses:{ attack:0, defense:0 } };
+      fac = { attack:0, defense:0 };
     }
 
     // 12) Compute totals
-    const lvl = xpToLevel(player.stats.experience);
-    let totalAtk=0, totalDef=0;
-    wdefs.forEach(w=>{
+    const lvl      = xpToLevel(player.stats.experience);
+    let totalAtk   = 0, totalDef = 0;
+    wdefs.forEach(w => {
       totalAtk += w.baseStats.attack + lvl*w.scaling.attackPerLevel;
       totalDef += w.baseStats.defense + lvl*w.scaling.defensePerLevel;
     });
-    totalAtk += fac.bonuses.attack;
-    totalDef += fac.bonuses.defense;
+    totalAtk += fac.attack;
+    totalDef += fac.defense;
 
-    // 13) Render the card
+    // 13) Render card UI
     root.innerHTML = '';
     root.append(
-      Object.assign(document.createElement('img'),{src:`${ASSETS_BASE_URL}/assets/factions/${player.faction}.png`,className:'faction-badge'}),
-      Object.assign(document.createElement('img'),{src:`${ASSETS_BASE_URL}/assets/cards/${player.cardId}.png`,className:'card-image'}),
-      Object.assign(document.createElement('div'),{className:'stats-panel',innerHTML:
+      Object.assign(document.createElement('img'), { src:`${ASSETS_BASE_URL}/assets/factions/${player.faction}.png`, className:'faction-badge' }),
+      Object.assign(document.createElement('img'), { src:`${ASSETS_BASE_URL}/assets/cards/${player.cardId}.png`,    className:'card-image' }),
+      Object.assign(document.createElement('div'), { className:'stats-panel', innerHTML:
         `<p>${cardMeta[player.cardId].displayName}</p>
          <p>Level: ${lvl}</p>
          <p>Health: ${player.stats.health}</p>
          <p>Energy: ${player.stats.energy}</p>
          <p>XP: ${player.stats.experience}</p>
          <p>Total ATK: ${totalAtk}</p>
-         <p>Total DEF: ${totalDef}</p>`}),
-      Object.assign(document.createElement('div'),{className:'weapons-panel'})
+         <p>Total DEF: ${totalDef}</p>` }),
+      Object.assign(document.createElement('div'), { className:'weapons-panel' })
     );
-    wdefs.forEach(w=>{
+    const wp = root.querySelector('.weapons-panel');
+    wdefs.forEach(w => {
       const img = document.createElement('img');
-      img.src = w.image;
-      img.title= `${w.name} — ATK:${w.baseStats.attack+lvl*w.scaling.attackPerLevel} DEF:${w.baseStats.defense+lvl*w.scaling.defensePerLevel}`;
-      root.querySelector('.weapons-panel').append(img);
+      img.src   = w.image;
+      img.title = `${w.name} — ATK:${w.baseStats.attack + lvl*w.scaling.attackPerLevel} DEF:${w.baseStats.defense + lvl*w.scaling.defensePerLevel}`;
+      wp.append(img);
     });
+
     err.textContent = '';
 
-    //
-    // === Dynamic save helpers ===
-    //
+    // 14) Dynamic save helpers
+    window.saveStats = async newStats =>
+      db.ref(`/players/${uid}/stats`).set(newStats);
 
-    // Overwrite the stats object
-    window.saveStats = async function(newStats) {
-      await db.ref(`/players/${uid}/stats`).set(newStats);
-    };
-
-    // Atomically increment experience
-    window.incrementExperience = async function(amount) {
-      await db.ref(`/players/${uid}/stats/experience`)
-              .transaction(xp => (xp||0) + amount);
-    };
+    window.incrementExperience = async amount =>
+      db.ref(`/players/${uid}/stats/experience`)
+        .transaction(xp => (xp||0) + amount);
   }
   catch (e) {
-    err.textContent = 'Error: ' + e.message;
+    document.getElementById('enigma-error').textContent = 'Error: ' + e.message;
   }
 })();
