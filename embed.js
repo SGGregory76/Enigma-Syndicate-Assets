@@ -1,214 +1,177 @@
-// embed.js — Enigma card embed with inline weapons & persistent per-UID storage
+// embed.js — per-UID only, no overrides
 (async function(){
-  // 0) Where your static assets live
   const ASSETS_BASE_URL = 'https://SGGregory76.github.io/Enigma-Syndicate-Assets';
 
-  // 1) Scoped CSS injection
+  // 1) Scoped CSS (mobile-friendly)
   const css = `
-    #enigma-game-root { box-sizing:border-box; width:100%; max-width:500px;
-      margin:1.5em auto; background:#fff; border:1px solid #ddd;
-      border-radius:6px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,0.1);
+    #game-root { box-sizing:border-box; width:100%; max-width:360px; margin:16px auto;
+      padding:16px; background:#fff; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.1);
       font-family:inherit;
     }
-    #enigma-game-root .faction-badge { width:40px; display:block; margin:.5em auto; }
-    #enigma-game-root .card-image      { width:100%; display:block; }
-    #enigma-game-root .stats-panel     { padding:.75em 1em; text-align:center; color:#333; }
-    #enigma-game-root .stats-panel p   { margin:.25em 0; line-height:1.2; }
-    #enigma-game-root .weapons-panel   { padding:.5em 1em 1em; text-align:center; }
-    #enigma-game-root .weapons-panel img { width:30px; margin:0 4px; vertical-align:middle; }
-    #enigma-error { text-align:center; color:red; margin-top:.5em; font-family:inherit; }
+    .faction-badge { width:32px; display:block; margin:0 auto 12px; }
+    .card-image    { width:100%; border-radius:4px; margin-bottom:12px; }
+    .stats-panel { display:grid; grid-template-columns:1fr 1fr; gap:4px 12px;
+      font-size:.95rem; margin-bottom:12px; color:#333;
+    }
+    .stats-panel p { margin:0; line-height:1.3; }
+    .weapons-panel { text-align:center; }
+    .weapons-panel img { width:28px; margin:0 6px 6px; vertical-align:middle; }
+    #demo-errors { font-size:.85rem; color:#c00; background:#fee; padding:8px;
+      border-radius:4px; margin-top:12px; white-space:pre-wrap;
+    }
   `;
-  document.head.appendChild(Object.assign(document.createElement('style'), {
-    textContent: css
-  }));
+  document.head.appendChild(Object.assign(document.createElement('style'),{textContent:css}));
 
-  // 2) Ensure container & error elements exist
-  let root = document.getElementById('enigma-game-root');
+  // 2) Ensure container & error box
+  let root = document.getElementById('game-root');
   if (!root) {
-    root = document.createElement('div');
-    root.id = 'enigma-game-root';
+    root = document.createElement('div'); root.id = 'game-root';
     document.currentScript.insertAdjacentElement('beforebegin', root);
   }
-  let err = document.getElementById('enigma-error');
-  if (!err) {
-    err = document.createElement('pre');
-    err.id = 'enigma-error';
-    root.insertAdjacentElement('afterend', err);
+  let errBox = document.getElementById('demo-errors');
+  if (!errBox) {
+    errBox = document.createElement('pre'); errBox.id = 'demo-errors';
+    root.insertAdjacentElement('afterend', errBox);
   }
-  err.textContent = 'Loading game…';
+  errBox.textContent = 'Loading engine…';
 
-  try {
-    // 3) Overrides from HTML
-    const forcedUid    = root.dataset.uid;
-    const forcedCardId = root.dataset.cardid;
-
-    // 4) Dynamically load Firebase compat SDKs if needed
-    if (!window.firebase) {
-      await new Promise((res, rej) => {
-        const libs = [
-          'https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js',
-          'https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js',
-          'https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js'
-        ];
-        let loaded = 0;
-        libs.forEach(src => {
-          const s = document.createElement('script');
-          s.src = src;
-          s.onload  = () => { if (++loaded === libs.length) res(); };
-          s.onerror = rej;
-          document.head.appendChild(s);
-        });
+  // 3) Load Firebase compat SDKs
+  if (!window.firebase) {
+    await new Promise((res,rej)=>{
+      const libs = [
+        'https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js',
+        'https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js',
+        'https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js'
+      ];
+      let loaded=0;
+      libs.forEach(src=>{
+        const s=document.createElement('script'); s.src=src;
+        s.onload = ()=>{ if(++loaded===libs.length) res(); };
+        s.onerror=rej;
+        document.head.appendChild(s);
       });
+    });
+  }
+
+  // 4) Initialize Firebase
+  firebase.initializeApp({
+    apiKey: "AIzaSyCiFF0giW60YhEF9MPF8RMMETXkNW9vv2Y",
+    authDomain: "sandbox-mafia.firebaseapp.com",
+    databaseURL: "https://sandbox-mafia-default-rtdb.firebaseio.com",
+    projectId: "sandbox-mafia",
+    storageBucket: "sandbox-mafia.firebasestorage.app",
+    messagingSenderId: "966783573980",
+    appId: "1:966783573980:web:a07a7b66d7d9a057dab919"
+  });
+  const auth = firebase.auth(), db = firebase.database();
+
+  // 5) Authenticate anonymously and get own UID
+  let uid;
+  await new Promise((res,rej)=>{
+    auth.onAuthStateChanged(u=>{
+      if (u) uid = u.uid;
+      else auth.signInAnonymously().then(c=>{ uid = c.user.uid; }).catch(rej);
+      res();
+    });
+  });
+  console.log("Your UID:", uid);
+
+  // 6) Inline metadata
+  const cardMeta = {
+    vito_the_intimidator: { faction:'enforcers',   displayName:'Vito the Enforcer' },
+    lola_the_quick:       { faction:'undercutters', displayName:'Maria the Shade'   },
+    bruno_the_tank:       { faction:'syndicate',   displayName:'Joey the Ghost'     }
+  };
+  const weaponMeta = {
+    "tommy-gun": {
+      name:"Tommy Gun", baseStats:{attack:15,defense:0}, scaling:{attackPerLevel:2,defensePerLevel:0},
+      image:`${ASSETS_BASE_URL}/assets/weapons/tommy-gun.png`
+    },
+    "bulletproof_vest": {
+      name:"Bulletproof Vest", baseStats:{attack:0,defense:12}, scaling:{attackPerLevel:0,defensePerLevel:1},
+      image:`${ASSETS_BASE_URL}/assets/weapons/bulletproof_vest.png`
     }
+  };
 
-    // 5) Initialize Firebase
-    firebase.initializeApp({
-      apiKey: "AIzaSyCiFF0giW60YhEF9MPF8RMMETXkNW9vv2Y",
-      authDomain: "sandbox-mafia.firebaseapp.com",
-      databaseURL: "https://sandbox-mafia-default-rtdb.firebaseio.com",
-      projectId: "sandbox-mafia",
-      storageBucket: "sandbox-mafia.firebasestorage.app",
-      messagingSenderId: "966783573980",
-      appId: "1:966783573980:web:a07a7b66d7d9a057dab919"
-    });
-    const auth = firebase.auth(), db = firebase.database();
+  // 7) Reference to own player node
+  const playerRef = db.ref(`/players/${uid}`);
 
-    // 6) XP → Level helper
-    const xpToLevel = xp => Math.floor(xp/100) + 1;
-
-    // 7) Authenticate (anon) → UID
-    let uid;
-    await new Promise((res, rej) => {
-      auth.onAuthStateChanged(user => {
-        if (user) uid = user.uid;
-        else auth.signInAnonymously()
-                 .then(c => { uid = c.user.uid; })
-                 .catch(rej);
-        res();
-      });
-    });
-    if (forcedUid) uid = forcedUid;
-
-    // 8) Inline card metadata
-    const cardMeta = {
-      vito_the_intimidator: { faction:'enforcers',   displayName:'Vito the Enforcer'  },
-      lola_the_quick:       { faction:'undercutters', displayName:'Maria the Shade'    },
-      bruno_the_tank:       { faction:'syndicate',   displayName:'Joey the Ghost'      }
-    };
-
-    // 9) Fetch or seed player record
-    let snap   = await db.ref(`/players/${uid}`).once('value');
-    let player = snap.val();
-    if (!player) {
-      // pick card
-      const cardId = (forcedCardId && cardMeta[forcedCardId])
-                     ? forcedCardId
-                     : Object.keys(cardMeta)[Math.floor(Math.random()*Object.keys(cardMeta).length)];
-      player = {
-        cardId,
-        faction: cardMeta[cardId].faction,
-        weapons:['tommy-gun','brass-knuckles'],
-        stats: { health:100, energy:50, experience:0 },
-        abilities:{ quick_shot:{ attackBonus:5, cooldown:30 } },
-        lastUpdated: new Date().toISOString()
+  // 8) Seed if missing, then attach real-time listener
+  playerRef.once('value').then(snap=>{
+    if (!snap.exists()) {
+      const defaultPlayer = {
+        cardId: Object.keys(cardMeta)[0],
+        faction: cardMeta[Object.keys(cardMeta)[0]].faction,
+        weapons:['tommy-gun','bulletproof_vest'],
+        stats:{health:100,energy:50,experience:0},
+        abilities:{quick_shot:{attackBonus:5,cooldown:30}},
+        createdAt: new Date().toISOString()
       };
-      await db.ref(`/players/${uid}`).set(player);
+      playerRef.set(defaultPlayer);
     }
-    // in-memory override if forcedCardId
-    if (forcedCardId && cardMeta[forcedCardId]) {
-      player.cardId  = forcedCardId;
-      player.faction = cardMeta[forcedCardId].faction;
-    }
-
-    // 10) Inline weapon metadata (no JSON fetch)
-    const weaponMeta = {
-      "tommy-gun": {
-        id:"tommy-gun", name:"Tommy Gun",
-        baseStats:{attack:15, defense:0}, scaling:{attackPerLevel:2, defensePerLevel:0},
-        image:`${ASSETS_BASE_URL}/assets/weapons/tommy-gun.png`
-      },
-      "brass-knuckles": {
-        id:"brass-knuckles", name:"Brass Knuckles",
-        baseStats:{attack:8, defense:2}, scaling:{attackPerLevel:1, defensePerLevel:1},
-        image:`${ASSETS_BASE_URL}/assets/weapons/brass-knuckles.png`
-      },
-      "bulletproof_vest": {
-        id:"bulletproof_vest", name:"Bulletproof Vest",
-        baseStats:{attack:0, defense:12}, scaling:{attackPerLevel:0, defensePerLevel:1},
-        image:`${ASSETS_BASE_URL}/assets/weapons/bulletproof_vest.png`
-      }
-    };
-    const wdefs = player.weapons.map(id => {
-      const w = weaponMeta[id];
-      if (!w) throw new Error(`Unknown weapon ID "${id}"`);
-      return w;
+    playerRef.on('value', snapshot=>{
+      const player = snapshot.val();
+      if (player) render(player);
     });
+  }).catch(e=>{
+    errBox.textContent = 'DB seed error: '+e.message;
+  });
 
-    // 11) Optional: load faction bonuses
-    let fac;
+  // 9) Render function
+  function render(player) {
     try {
-      fac = await db.ref(`/factions/${player.faction}/bonuses`).once('value').then(s=>s.val());
-      if (!fac) throw 0;
-    } catch {
-      fac = { attack:0, defense:0 };
+      const lvl = Math.floor(player.stats.experience/100)+1;
+      let totalAtk=0, totalDef=0;
+      player.weapons.forEach(id=>{
+        const w = weaponMeta[id];
+        totalAtk += w.baseStats.attack + lvl*w.scaling.attackPerLevel;
+        totalDef += w.baseStats.defense + lvl*w.scaling.defensePerLevel;
+      });
+      root.innerHTML = '';
+      // badge
+      root.append(
+        Object.assign(document.createElement('img'),{
+          src:`${ASSETS_BASE_URL}/assets/factions/${player.faction}.png`,
+          className:'faction-badge'
+        })
+      );
+      // card art
+      root.append(
+        Object.assign(document.createElement('img'),{
+          src:`${ASSETS_BASE_URL}/assets/cards/${player.cardId}.png`,
+          className:'card-image'
+        })
+      );
+      // stats grid
+      const statsDiv = document.createElement('div');
+      statsDiv.className='stats-panel';
+      statsDiv.innerHTML=`
+        <p>Lvl:${lvl}</p><p>HP:${player.stats.health}</p>
+        <p>EN:${player.stats.energy}</p><p>XP:${player.stats.experience}</p>
+        <p>ATK:${totalAtk}</p><p>DEF:${totalDef}</p>
+      `;
+      root.append(statsDiv);
+      // weapons
+      const wp = document.createElement('div');
+      wp.className='weapons-panel';
+      player.weapons.forEach(id=>{
+        const w=weaponMeta[id];
+        const img=document.createElement('img');
+        img.src=w.image;
+        img.title=`${w.name} — ATK:${w.baseStats.attack + lvl*w.scaling.attackPerLevel} DEF:${w.baseStats.defense + lvl*w.scaling.defensePerLevel}`;
+        wp.append(img);
+      });
+      root.append(wp);
+      errBox.textContent='';
+    } catch(e){
+      errBox.textContent='Render error: '+e.message;
     }
-
-    // 12) Compute total stats
-    const lvl = xpToLevel(player.stats.experience);
-    let totalAtk=0, totalDef=0;
-    wdefs.forEach(w => {
-      totalAtk += w.baseStats.attack + lvl*w.scaling.attackPerLevel;
-      totalDef += w.baseStats.defense + lvl*w.scaling.defensePerLevel;
-    });
-    totalAtk += fac.attack;
-    totalDef += fac.defense;
-
-    // 13) Render the card UI
-    root.innerHTML = '';
-    root.append(
-      Object.assign(document.createElement('img'), {
-        src: `${ASSETS_BASE_URL}/assets/factions/${player.faction}.png`,
-        className:'faction-badge'
-      }),
-      Object.assign(document.createElement('img'), {
-        src: `${ASSETS_BASE_URL}/assets/cards/${player.cardId}.png`,
-        className:'card-image'
-      }),
-      Object.assign(document.createElement('div'), {
-        className:'stats-panel',
-        innerHTML: `
-          <p>${cardMeta[player.cardId].displayName}</p>
-          <p>Level: ${lvl}</p>
-          <p>Health: ${player.stats.health}</p>
-          <p>Energy: ${player.stats.energy}</p>
-          <p>XP: ${player.stats.experience}</p>
-          <p>Total ATK: ${totalAtk}</p>
-          <p>Total DEF: ${totalDef}</p>
-        `
-      }),
-      Object.assign(document.createElement('div'), {
-        className:'weapons-panel'
-      })
-    );
-    const wp = root.querySelector('.weapons-panel');
-    wdefs.forEach(w => {
-      const img = document.createElement('img');
-      img.src   = w.image;
-      img.title = `${w.name} — ATK:${w.baseStats.attack + lvl*w.scaling.attackPerLevel} DEF:${w.baseStats.defense + lvl*w.scaling.defensePerLevel}`;
-      wp.append(img);
-    });
-
-    err.textContent = '';
-
-    // 14) Expose save helpers if you need them
-    window.saveStats = async newStats =>
-      db.ref(`/players/${uid}/stats`).set(newStats);
-
-    window.incrementExperience = async amount =>
-      db.ref(`/players/${uid}/stats/experience`)
-        .transaction(xp => (xp||0) + amount);
-
-  } catch (e) {
-    err.textContent = 'Error: ' + e.message;
   }
+
+  // 10) Expose partial update helper
+  window.updateStats = async deltaObj => {
+    await playerRef.update(deltaObj);
+  };
+
 })();
+</script>
